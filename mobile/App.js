@@ -178,6 +178,22 @@ export default function App() {
   const [quoteExpired, setQuoteExpired] = useState(false);
   const bgSince = useRef(0);
 
+  // Android: OS sheets (BiometricPrompt, permission dialogs) PAUSE the
+  // activity, which fires AppState "background" even though the user never
+  // left the app. While one of them is up, backgrounding must not count
+  // toward auto-lock — otherwise a slow fingerprint retry during a payment
+  // would yank the user to the lock screen mid-flow.
+  const nativePromptActive = useRef(false);
+  async function withNativePrompt(fn) {
+    nativePromptActive.current = true;
+    try {
+      return await fn();
+    } finally {
+      nativePromptActive.current = false;
+      bgSince.current = 0; // the "background" was the OS sheet, not an exit
+    }
+  }
+
   const checkScale = useRef(new Animated.Value(0)).current;
 
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -243,6 +259,7 @@ export default function App() {
     if (IS_WEB) return; // browsers have no trustworthy background signal for this
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "background") {
+        if (nativePromptActive.current) return; // an OS sheet paused us — not a real exit
         bgSince.current = Date.now();
         return;
       }
@@ -324,11 +341,13 @@ export default function App() {
         }
         return finishUnlock();
       }
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock Borderless Pay",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false, // device PIN / pattern is an acceptable factor
-      });
+      const result = await withNativePrompt(() =>
+        LocalAuthentication.authenticateAsync({
+          promptMessage: "Unlock Borderless Pay",
+          cancelLabel: "Cancel",
+          disableDeviceFallback: false, // device PIN / pattern is an acceptable factor
+        })
+      );
       if (result.success) return finishUnlock();
       setLockState("failed");
     } finally {
@@ -719,7 +738,7 @@ export default function App() {
           {
             text: "Continue",
             onPress: async () => {
-              const res = await Contacts.requestPermissionsAsync(); // the real OS Allow/Deny pop-up
+              const res = await withNativePrompt(() => Contacts.requestPermissionsAsync()); // the real OS Allow/Deny pop-up
               if (res.status === "granted") loadPhoneContacts();
               else appAlert("No problem", "You can still pay by entering a UPI ID or phone number.", [{ text: "OK", onPress: () => startDom("phone") }]);
             },
@@ -787,7 +806,7 @@ export default function App() {
         "Get an instant receipt and a security alert for every payment. Optional — the app works fully without it.",
         [
           { text: "No thanks", style: "cancel" },
-          { text: "Enable alerts", onPress: () => Notifications.requestPermissionsAsync() }, // real OS Allow/Deny pop-up
+          { text: "Enable alerts", onPress: () => withNativePrompt(() => Notifications.requestPermissionsAsync()) }, // real OS Allow/Deny pop-up
         ]
       );
     } catch (e) { /* notifications unavailable — silently skip */ }
@@ -894,11 +913,13 @@ export default function App() {
         setBioState("passed"); // no biometrics on this device — PIN is the factor
         return;
       }
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Authorize your payment",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false,
-      });
+      const result = await withNativePrompt(() =>
+        LocalAuthentication.authenticateAsync({
+          promptMessage: "Authorize your payment",
+          cancelLabel: "Cancel",
+          disableDeviceFallback: false,
+        })
+      );
       // THE GATE IS REAL: a failed or cancelled biometric blocks the PIN pad.
       setBioState(result.success ? "passed" : "failed");
     } catch (e) {
@@ -1607,7 +1628,7 @@ export default function App() {
                     entering a UPI ID.
                   </Text>
                 </Card>
-                <PrimaryButton title="Allow camera & scan" onPress={requestCamPerm} />
+                <PrimaryButton title="Allow camera & scan" onPress={() => withNativePrompt(requestCamPerm)} />
                 <PrimaryButton title="Enter UPI ID instead" secondary onPress={() => startDom("upiid")} />
                 <PrimaryButton title="Use demo QR (no camera)" secondary onPress={useDemoQr} />
               </View>
