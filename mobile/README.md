@@ -31,6 +31,10 @@ notifications) · runs on **any JDK 17+**.
   retries in place instead of bouncing you back to the form.
 - **Session expiry handled:** if the refresh token dies, you're signed out
   cleanly with an explanation — never stranded on failing screens.
+- **Release builds work with the LAN backend:** cleartext `http://` is now
+  enabled for all variants (`plugins/with-cleartext-http.js`) — previously a
+  release build in live mode failed on Android 9+ with "Network request
+  failed" (flips to HTTPS + pinning before store release).
 
 **Trust features on-device:** every receipt carries a settlement-ledger hash and
 public anchor, and the **🔎 Verify this receipt independently** button recomputes
@@ -485,6 +489,7 @@ Then reload the app. (Use the release recipe above if you'd rather not run Metro
 ```
 App.js              all screens + navigation + state
 app.json            Expo config (icons, splash, iOS/Android ids, plugins)
+plugins/            local Expo config plugins (cleartext http for LAN builds)
 src/config.js       API base (platform-aware) + demo-mode switch
 src/theme.js        design tokens + corridor / biller directories
 src/api.js          API client (real backend or simulator)
@@ -561,6 +566,13 @@ every push.
 - **App opens but can't reach the backend** → you're likely on Android using
   `localhost`. Keep `DEMO_MODE: true`, or use `10.0.2.2` (handled automatically
   when `DEMO_MODE` is false).
+- **"Network request failed" in a RELEASE build (live mode), while the debug
+  build works** → Android 9+ blocks plain `http://` unless the manifest allows
+  it, and Expo's template only allows it in *debug*. This repo now enables it
+  for all variants via `plugins/with-cleartext-http.js` (see
+  `mobile/SECURITY.md` — switches to HTTPS + certificate pinning before store
+  release). If you built before that plugin existed, run
+  **`npm run prebuild:clean`** and rebuild.
 - **Build cache weirdness after upgrades** → `npm run prebuild:clean`, then in
   `mobile/android` run *Build → Clean Project* in Android Studio.
 - **Don't** commit the generated `android/` and `ios/` folders — they're
