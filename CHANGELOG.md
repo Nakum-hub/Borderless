@@ -44,6 +44,16 @@ payments apps behave, and the fixes for every gap found. Backend unchanged
   persistence round-trip / tamper-refusal / single-use-quote non-restore.
 
 ### Fixed / hardened (mobile)
+- **Release builds can reach the LAN backend again** (`plugins/with-cleartext-http.js`,
+  zero-dep config plugin): Expo's template only allows cleartext `http://` in
+  *debug*, so the documented phone recipe (release build + `EXPO_PUBLIC_API_BASE=
+  http://<LAN-IP>:4000`) failed on Android 9+ with "Network request failed".
+  Cleartext is now explicitly enabled for the LAN/pilot phase and tracked in
+  `mobile/SECURITY.md` to flip off with HTTPS + pinning before store release.
+- **Auto-lock no longer fires while an OS sheet is up**: on Android, the
+  biometric prompt and permission dialogs pause the activity (AppState
+  "background"), so a slow fingerprint retry during a payment could yank the
+  user to the lock screen mid-flow. Native prompts are now tracked and exempt.
 - A mistyped payment PIN now retries **in place** on the auth screen (server
   lockout still applies) instead of bouncing to the form.
 - `npm run live` and `npm run sim` now clear Metro's cache: stale transform
